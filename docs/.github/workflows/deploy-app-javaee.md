@@ -7,7 +7,7 @@
 | **Archivo** | `.github/workflows/deploy-app-javaee.yml` |
 | **Nombre** | `Deploy Banca Nacional` |
 | **Propósito** | Compilar el EAR de Banca Nacional y desplegarlo en un WildFly remoto |
-| **Trigger** | Push a `main` o `master` con cambios en `apps/backend-for-frontend/app-javaee/**` |
+| **Trigger** | `workflow_dispatch` (manual) o push a `main` / `master` con cambios en `apps/backend-for-frontend/app-javaee/**` |
 
 ## Diagrama de flujo
 
@@ -87,10 +87,34 @@ Cada Environment tiene sus propios secrets y variables, permitiendo distintos se
 
 ## Uso
 
+### Activación automática (push)
+
 1. Configurar el Environment en GitHub con los secrets y variables necesarios
 2. Hacer push a `main` o `master` con cambios en `apps/backend-for-frontend/app-javaee/`
 3. El pipeline compila, copia y despliega automáticamente
 4. La verificación espera hasta 60s por el marcador `.deployed`
+
+### Ejecución manual (workflow_dispatch)
+
+El pipeline se puede lanzar manualmente desde la interfaz de GitHub Actions:
+
+1. Ir a `Actions > Deploy Banca Nacional > Run workflow`
+2. Configurar los parámetros:
+
+   | Parámetro | Tipo | Requerido | Default | Descripción |
+   |-----------|------|-----------|---------|-------------|
+   | `environment` | `choice` | Sí | `dev` | Entorno destino. Selecciona automáticamente el Environment de GitHub correspondiente (cada uno con sus propios secrets/variables) |
+   | `skip_verify` | `boolean` | No | `false` | Si se activa, salta el paso de verificación (útil para despliegues rápidos o cuando se sabe que el EAR es correcto) |
+
+3. Hacer clic en **Run workflow**
+
+Esto ejecuta el mismo pipeline que un push, pero con la flexibilidad de elegir el entorno y opciones adicionales.
+
+#### Casos de uso típicos
+
+- **Rollback a una versión anterior**: Hacer checkout de un commit anterior localmente, compilar el EAR manualmente y lanzar el workflow con `environment: prod`.
+- **Despliegue rápido sin verificación**: Usar `skip_verify: true` cuando se necesita desplegar urgentemente y se confía en el artefacto.
+- **Pruebas en dev**: Lanzar el workflow con `environment: dev` para validar un cambio sin necesidad de hacer push.
 
 ## Posibles fallos
 

@@ -1,6 +1,21 @@
 name: Deploy Banca Nacional
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno destino'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      skip_verify:
+        description: 'Saltar verificación post-despliegue'
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [feature/pipelines]
     paths:
@@ -13,7 +28,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: ${{ vars.DEPLOY_ENVIRONMENT || 'dev' }}
+    environment: ${{ inputs.environment || vars.DEPLOY_ENVIRONMENT || 'dev' }}
     env:
       MAVEN_OPTS: -Dmaven.repo.local=/tmp/.m2/repository
 
@@ -60,6 +75,7 @@ jobs:
             echo "Deploy triggered: ${DEPLOY_PATH}/banca-nacional.ear"
 
       - name: Verify deployment
+        if: ${{ ! inputs.skip_verify }}
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
