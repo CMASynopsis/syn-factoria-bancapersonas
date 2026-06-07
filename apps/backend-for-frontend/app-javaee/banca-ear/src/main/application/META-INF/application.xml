@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://xmlns.jcp.org/xml/ns/javaee" xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd" version="7">
+  <description>EAR: Java 8 + WildFly 10.1 + MySQL 5.7</description>
+  <display-name>Banca Nacional</display-name>
+  <module>
+    <ejb>banca-ejb.jar</ejb>
+  </module>
+  <module>
+    <web>
+      <web-uri>banca-web.war</web-uri>
+      <context-root>/banca</context-root>
+    </web>
+  </module>
+  <library-directory>lib</library-directory>
+</application>

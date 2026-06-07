@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    ARCHIVO: $WILDFLY_HOME/modules/com/mysql/main/module.xml
+
+    Registra el driver MySQL 5.1.49 como módulo de WildFly 10.1.
+    El JAR mysql-connector-java-5.1.49.jar debe estar en la misma carpeta.
+-->
+<module xmlns="urn:jboss:module:1.3" name="com.mysql">
+    <resources>
+        <resource-root path="mysql-connector-java-5.1.49.jar"/>
+    </resources>
+    <dependencies>
+        <module name="javax.api"/>
+        <module name="javax.transaction.api"/>
+    </dependencies>
+</module>
