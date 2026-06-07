@@ -2,7 +2,7 @@ name: Deploy Banca Nacional
 
 on:
   push:
-    branches: [main]
+    branches: [feature/pipelines]
     paths:
       - 'apps/backend-for-frontend/app-javaee/**'
 
