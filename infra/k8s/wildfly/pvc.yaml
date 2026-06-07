@@ -1,0 +1,50 @@
+# =============================================================================
+# PersistentVolumeClaim: wildfly-deployments-pvc
+# =============================================================================
+# Proposito: Volumen persistente para el directorio de deployments de Wildfly.
+#            Permite que los artefactos (.ear/.war) persistan entre reinicios
+#            del Pod y facilita el despliegue via SCP/SSH desde pipelines CI/CD.
+#
+# Storage Classes:
+#   - dev:      Use local-path o standard (cluster local)
+#   - staging:  EBS gp3 (AWS) / Persistent Disk (GCP) / Azure Disk
+#   - prod:     EBS gp3 con IOPS provisionadas / SSD premium
+#
+# Uso:
+#   kubectl apply -f infra/k8s/wildfly/pvc.yaml
+#
+# Referencias:
+#   - Montado en /opt/jboss/wildfly/standalone/deployments dentro del contenedor
+#   - El pipeline CI/CD copia el .ear via SCP a este directorio
+#   - Wildfly detecta el cambio y hace auto-deploy
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wildfly-deployments-pvc
+  namespace: wildfly
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly-pvc
+  annotations:
+    description: "PVC para deployments de Wildfly"
+    usage: "Almacena artefactos .ear/.war para auto-despliegue"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # ── Tamaño del volumen ──────────────────────────────────────────────
+      # dev:    1Gi  (suficiente para desarrollo local)
+      # staging: 5Gi  (multiples versiones de artefactos)
+      # prod:    10Gi (historial de releases + artefactos actuales)
+      storage: 1Gi
+  # ── Storage Class ───────────────────────────────────────────────────────
+  # Dev: usa el storage class por defecto del cluster
+  # Para AWS EBS gp3: storageClassName: gp3
+  # Para GCP PD-SSD:  storageClassName: pd-ssd
+  # Para local (kind/minikube): storageClassName: standard
+  # storageClassName: ""
+---

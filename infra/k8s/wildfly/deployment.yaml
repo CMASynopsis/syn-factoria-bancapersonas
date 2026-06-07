@@ -1,0 +1,220 @@
+# =============================================================================
+# Deployment: wildfly
+# =============================================================================
+# Proposito: Deployment de Wildfly con SSH integrado para despliegue
+#            automatizado via pipelines CI/CD (SCP + SSH).
+#
+# Puertos del contenedor:
+#   22   - SSH (para SCP y conexiones de deploy)
+#   8080 - HTTP (aplicaciones Java EE)
+#   9990 - Admin (Wildfly Management Console)
+#
+# Variables de entorno (desde ConfigMap y Secrets):
+#   WILDFLY_XMS, WILDFLY_XMX     → JAVA_OPTS (JVM)
+#   WILDFLY_JAVA_OPTS             → Opciones JVM adicionales
+#   DEPLOY_USER, DEPLOY_PASSWORD  → Credenciales SSH
+#   WILDFLY_SSH_PUBLIC_KEY        → Clave publica SSH (opcional)
+#   HEALTH_CHECK_URL              → URL para health checks
+#
+# Perfiles:
+#   - Dev:      configMapRef: wildfly-config-dev
+#   - Staging:  configMapRef: wildfly-config-staging
+#   - Prod:     configMapRef: wildfly-config-prod
+#
+# Para cambiar de perfil, modifica el configMapRef en spec.template.spec.containers[].envFrom
+# y ajusta resources, replicas y storage segun el perfil.
+#
+# Uso:
+#   kubectl apply -f infra/k8s/wildfly/deployment.yaml
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wildfly
+  namespace: wildfly
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly
+    environment: dev
+    managed-by: kustomize
+  annotations:
+    description: "Wildfly server with SSH for automated deployments"
+    maintainer: "Factoria Bancapersonas"
+    wildfly.version: "26.1.2.Final"
+    # ── Perfil activo ─────────────────────────────────────────────────────
+    # Cambiar segun el entorno: dev, staging, prod
+    profile: "dev"
+spec:
+  # ── Replicas ────────────────────────────────────────────────────────────
+  # Dev:     1 replica
+  # Staging: 2 replicas (alta disponibilidad basica)
+  # Prod:    3+ replicas (alta disponibilidad + rolling updates)
+  replicas: 1
+
+  # ── Estrategia de actualizacion ────────────────────────────────────────
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0       # Sin downtime durante actualizaciones
+      maxSurge: 1             # Un pod adicional durante el update
+
+  # ── Selector de Pods ────────────────────────────────────────────────────
+  selector:
+    matchLabels:
+      app: geniahr-wildfly
+      module: app-javaee
+      component: wildfly
+
+  # ── Template del Pod ────────────────────────────────────────────────────
+  template:
+    metadata:
+      labels:
+        app: geniahr-wildfly
+        module: app-javaee
+        component: wildfly
+        environment: dev
+        managed-by: kustomize
+      annotations:
+        description: "Wildfly Pod with SSH access"
+        profile: "dev"
+        # Forzar reinicio cuando cambien ConfigMap o Secrets
+        checksum/config: "${CONFIG_CHECKSUM}"
+    spec:
+      # ── Imagen ─────────────────────────────────────────────────────────
+      # NOTA: En produccion, usa un tag fijo (no 'latest') y referencialo
+      #       desde un registry privado (ECR, GCR, ACR, Harbor).
+      #       Ejemplo: 123456789.dkr.ecr.us-east-1.amazonaws.com/wildfly-ssh:26.1.2.Final
+      containers:
+        - name: wildfly
+          image: wildfly-ssh:26.1.2.Final
+          imagePullPolicy: IfNotPresent
+          # Si usas registry privado:
+          # imagePullPolicy: Always
+
+          # ── Puertos ────────────────────────────────────────────────────
+          ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 9990
+              name: admin
+              protocol: TCP
+
+          # ── Variables de entorno desde ConfigMap y Secrets ─────────────
+          envFrom:
+            # ── ConfigMap segun perfil ───────────────────────────────────
+            # Cambiar a wildfly-config-staging o wildfly-config-prod segun entorno
+            - configMapRef:
+                name: wildfly-config-dev
+            # ── Secrets (credenciales) ───────────────────────────────────
+            - secretRef:
+                name: wildfly-secrets
+                optional: false
+
+          # ── Variables individuales (computadas) ────────────────────────
+          env:
+            # ── JAVA_OPTS: Se construye desde WILDFLY_XMS, WILDFLY_XMX y WILDFLY_JAVA_OPTS
+            #     Usando un init container o startup script se podria hacer la concatenacion.
+            #     Aqui lo hacemos inline.
+            - name: JAVA_OPTS
+              value: "-Xms$(WILDFLY_XMS) -Xmx$(WILDFLY_XMX) $(WILDFLY_JAVA_OPTS)"
+
+            # ── Puerto SSH dentro del contenedor (siempre 22) ───────────
+            - name: WILDFLY_SSH_PORT
+              value: "22"
+
+            # ── Modo standalone (default) ────────────────────────────────
+            - name: LAUNCH_WILDFLY_IN_BACKGROUND
+              value: "false"
+
+          # ── Volume Mounts ──────────────────────────────────────────────
+          volumeMounts:
+            # ── Deployments persistentes ─────────────────────────────────
+            # Directorio donde Wildfly monitoriza auto-deploy de .ear/.war
+            - name: deployments
+              mountPath: /opt/jboss/wildfly/standalone/deployments
+              readOnly: false
+
+            # ── (Opcional) Configuracion standalone.xml externa ─────────
+            # Si necesitas montar un standalone.xml personalizado, descomenta:
+            # - name: wildfly-config-volume
+            #   mountPath: /opt/jboss/wildfly/standalone/configuration/standalone.xml
+            #   subPath: standalone.xml
+            #   readOnly: true
+
+          # ── Readiness Probe ────────────────────────────────────────────
+          # Verifica que Wildfly este listo para recibir trafico HTTP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30      # Esperar a que Wildfly arranque
+            periodSeconds: 10            # Cada 10 segundos
+            timeoutSeconds: 5            # Timeout de 5 segundos
+            successThreshold: 1          # 1 exito para considerar listo
+            failureThreshold: 6          # 6 fallos (60s) antes de marcar no listo
+
+          # ── Liveness Probe ─────────────────────────────────────────────
+          # Verifica que Wildfly siga vivo y respondiendo
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 60      # Dar tiempo a que arranque completamente
+            periodSeconds: 15            # Cada 15 segundos
+            timeoutSeconds: 5            # Timeout de 5 segundos
+            successThreshold: 1          # 1 exito para considerar vivo
+            failureThreshold: 3          # 3 fallos (45s) → reiniciar Pod
+
+          # ── Recursos ──────────────────────────────────────────────────
+          # Ajustar segun perfil:
+          #   Dev:      requests: 512m/512Mi,  limits: 1/1Gi
+          #   Staging:  requests: 1/1Gi,       limits: 2/2Gi
+          #   Prod:     requests: 2/2Gi,       limits: 4/4Gi
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
+      # ── Volumes ───────────────────────────────────────────────────────
+      volumes:
+        # ── Volumen persistente para deployments ────────────────────────
+        - name: deployments
+          persistentVolumeClaim:
+            claimName: wildfly-deployments-pvc
+            readOnly: false
+
+        # ── (Opcional) ConfigMap para standalone.xml ────────────────────
+        # Si necesitas configurar un standalone.xml externo, descomenta:
+        # - name: wildfly-config-volume
+        #   configMap:
+        #     name: wildfly-standalone-xml
+        #     items:
+        #       - key: standalone.xml
+        #         path: standalone.xml
+
+      # ── Politica de reinicio ──────────────────────────────────────────
+      restartPolicy: Always
+
+      # ── Tolerancias (opcional, para nodos especificos) ────────────────
+      # Si el cluster tiene nodos dedicados para Wildfly, descomenta:
+      # tolerations:
+      #   - key: "wildfly"
+      #     operator: "Equal"
+      #     value: "true"
+      #     effect: "NoSchedule"
+
+      # ── Termination Grace Period ──────────────────────────────────────
+      # Tiempo para que Wildfly complete los deployments activos antes de morir
+      terminationGracePeriodSeconds: 120
+---

@@ -1,0 +1,34 @@
+# =============================================================================
+# Namespace: wildfly
+# =============================================================================
+# Proposito: Namespace dedicado para el servidor Wildfly con SSH.
+#            Aísla los recursos de Wildfly del resto del clúster.
+#
+# Perfiles: Se puede parametrizar el nombre del namespace usando Kustomize
+#           o modificando directamente el nombre.
+#
+# Uso:
+#   kubectl apply -f infra/k8s/wildfly/namespace.yaml
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# NOTA: Si usas Kustomize, el namespace se define en kustomization.yaml.
+#       Este archivo se incluye como base y Kustomize sobrescribe el namespace
+#       en los overlays (dev → wildfly-dev, staging → wildfly-staging, etc.).
+# ---------------------------------------------------------------------------
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wildfly
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly
+    managed-by: kustomize
+    environment: base
+  annotations:
+    description: "Namespace para servidores Wildfly con SSH integrado"
+    maintainer: "Factoria Bancapersonas"
+    contact: "devops@factoriabancapersonas.com"
+---

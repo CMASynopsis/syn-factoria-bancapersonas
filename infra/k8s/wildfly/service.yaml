@@ -1,0 +1,78 @@
+# =============================================================================
+# Service: wildfly
+# =============================================================================
+# Proposito: Exponer los puertos de Wildfly dentro del clúster Kubernetes.
+#
+# Puertos expuestos:
+#   8080 → 8080 (HTTP)  - Aplicaciones Java EE / APIs REST
+#   9990 → 9990 (Admin) - Wildfly Management Console (restringir acceso)
+#   22   → 22   (SSH)   - (Opcional) Para CI/CD SCP deployments
+#
+# Tipos de Service por perfil:
+#   Dev:      NodePort (acceso directo desde workstation)
+#   Staging:  ClusterIP + Ingress (solo HTTP expuesto externamente)
+#   Prod:     ClusterIP + Ingress (solo HTTP, Admin/SSH solo interno)
+#
+# Seguridad:
+#   - Puerto 9990 (Admin) NO debe exponerse externamente en produccion
+#   - Puerto 22 (SSH) solo se expone si es necesario para CI/CD interno
+#   - En produccion, usa NetworkPolicies para restringir acceso
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wildfly
+  namespace: wildfly
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly-service
+    environment: dev
+    managed-by: kustomize
+  annotations:
+    description: "Service para Wildfly con SSH"
+    service.type: "clusterip"
+spec:
+  # ── Tipo de Service ───────────────────────────────────────────────────
+  # Dev:      NodePort  (acceso directo desde fuera del cluster)
+  # Staging:  ClusterIP (solo interno, con Ingress para HTTP)
+  # Prod:     ClusterIP (solo interno, con Ingress para HTTP)
+  type: ClusterIP
+
+  # ── Puertos ───────────────────────────────────────────────────────────
+  ports:
+    # ── HTTP (Wildfly) ──────────────────────────────────────────────────
+    - name: http
+      protocol: TCP
+      port: 8080            # Puerto del Service
+      targetPort: 8080      # Puerto del contenedor
+      # ── NodePort (solo si type=NodePort) ──────────────────────────────
+      # nodePort: 30080     # Puerto en cada nodo del cluster
+
+    # ── Admin (Wildfly Management Console) ──────────────────────────────
+    # NOTA: En produccion, NO exponer este puerto externamente.
+    #       Usar port-forwarding para acceso admin: kubectl port-forward ...
+    - name: admin
+      protocol: TCP
+      port: 9990
+      targetPort: 9990
+      # nodePort: 30990
+
+    # ── SSH (Opcional) ──────────────────────────────────────────────────
+    # Solo si necesitas que el pipeline CI/CD se conecte via SSH al Pod.
+    # En la mayoria de casos, SSH se usa con docker local, no en K8s.
+    # Para K8s, el pipeline deberia copiar el artefacto al PVC directamente
+    # o usar kubectl cp.
+    - name: ssh
+      protocol: TCP
+      port: 22
+      targetPort: 22
+      # nodePort: 30022
+
+  # ── Selector de Pods ──────────────────────────────────────────────────
+  selector:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly
+---

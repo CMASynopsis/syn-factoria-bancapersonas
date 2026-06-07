@@ -1,0 +1,124 @@
+# =============================================================================
+# Kustomization: Wildfly + SSH — Base + Overlays por perfil
+# =============================================================================
+# Proposito: Gestionar los manifiestos Kubernetes de Wildfly con Kustomize,
+#            permitiendo overlays diferenciados por entorno (dev, staging, prod).
+#
+# Estructura:
+#   infra/k8s/wildfly/
+#   ├── kustomization.yaml      # ← Base (este archivo)
+#   ├── namespace.yaml
+#   ├── configmap.yaml
+#   ├── secrets.yaml
+#   ├── pvc.yaml
+#   ├── deployment.yaml
+#   ├── service.yaml
+#   └── overlays/               # Crear si se necesitan overlays
+#       ├── dev/
+#       │   └── kustomization.yaml
+#       ├── staging/
+#       │   └── kustomization.yaml
+#       └── prod/
+#           └── kustomization.yaml
+#
+# Uso basico (sin overlays):
+#   kubectl apply -k infra/k8s/wildfly/
+#
+# Uso con overlays:
+#   kubectl apply -k infra/k8s/wildfly/overlays/dev/
+#   kubectl apply -k infra/k8s/wildfly/overlays/staging/
+#   kubectl apply -k infra/k8s/wildfly/overlays/prod/
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ── Metadata ────────────────────────────────────────────────────────────────
+metadata:
+  name: wildfly
+  namespace: wildfly
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+
+# ── Recursos incluidos ──────────────────────────────────────────────────────
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+
+# ── CommonLabels ────────────────────────────────────────────────────────────
+# Labels que se aniadiran a TODOS los recursos (incluyendo los seleccionados)
+commonLabels:
+  app: geniahr-wildfly
+  module: app-javaee
+  managed-by: kustomize
+
+# ── CommonAnnotations ───────────────────────────────────────────────────────
+commonAnnotations:
+  maintainer: "Factoria Bancapersonas"
+  contact: "devops@factoriabancapersonas.com"
+
+# ── Name Prefix ─────────────────────────────────────────────────────────────
+# Opcional: aniadir un prefijo a todos los nombres de recursos
+# namePrefix: wildfly-
+
+# ── Namespace ───────────────────────────────────────────────────────────────
+# Si se define aqui, sobrescribe el namespace de todos los recursos
+# namespace: wildfly
+
+# ── Images ──────────────────────────────────────────────────────────────────
+# Permite cambiar la imagen en todos los deployments a la vez
+images:
+  - name: wildfly-ssh
+    newName: wildfly-ssh
+    newTag: 26.1.2.Final
+  # Para registry privado:
+  # - name: wildfly-ssh
+  #   newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/wildfly-ssh
+  #   newTag: 26.1.2.Final
+
+# ── ConfigMap Generator ─────────────────────────────────────────────────────
+# Opcional: si prefieres generar ConfigMaps desde archivos .env o .properties
+# configMapGenerator:
+#   - name: wildfly-config
+#     envs:
+#       - config/dev.env
+#     behavior: merge
+
+# ── Secret Generator ────────────────────────────────────────────────────────
+# Opcional: usar sops o vals para encriptar secrets
+# secretGenerator:
+#   - name: wildfly-secrets
+#     envs:
+#       - secrets/dev.env
+#     type: Opaque
+
+# ── Patches (para overlays) ─────────────────────────────────────────────────
+# Los overlays usan patchesStrategicMerge o patchesJson6902 para sobrescribir
+# valores especificos (replicas, resources, configMapRef, etc.).
+#
+# Ejemplo de overlay dev/:
+#   patchesStrategicMerge:
+#     - deployment-patch.yaml
+#   patches:
+#     - target:
+#         kind: Deployment
+#         name: wildfly
+#       patch: |-
+#         - op: replace
+#           path: /spec/replicas
+#           value: 1
+#         - op: replace
+#           path: /spec/template/spec/containers/0/envFrom/0/configMapRef/name
+#           value: wildfly-config-dev
+#         - op: replace
+#           path: /spec/template/spec/containers/0/resources/requests/memory
+#           value: "512Mi"
+#         - op: replace
+#           path: /spec/template/spec/containers/0/resources/limits/memory
+#           value: "1Gi"
+---
