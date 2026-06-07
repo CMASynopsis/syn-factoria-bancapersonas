@@ -32,26 +32,23 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: wildfly
-  namespace: wildfly
   labels:
     app: geniahr-wildfly
     module: app-javaee
     component: wildfly
-    environment: dev
+    environment: ${PROFILE}
     managed-by: kustomize
   annotations:
     description: "Wildfly server with SSH for automated deployments"
     maintainer: "Factoria Bancapersonas"
     wildfly.version: "26.1.2.Final"
-    # ── Perfil activo ─────────────────────────────────────────────────────
-    # Cambiar segun el entorno: dev, staging, prod
-    profile: "dev"
+    profile: "${PROFILE}"
 spec:
   # ── Replicas ────────────────────────────────────────────────────────────
   # Dev:     1 replica
   # Staging: 2 replicas (alta disponibilidad basica)
   # Prod:    3+ replicas (alta disponibilidad + rolling updates)
-  replicas: 1
+  replicas: ${WILDFLY_REPLICAS}
 
   # ── Estrategia de actualizacion ────────────────────────────────────────
   strategy:
@@ -74,11 +71,11 @@ spec:
         app: geniahr-wildfly
         module: app-javaee
         component: wildfly
-        environment: dev
+        environment: ${PROFILE}
         managed-by: kustomize
       annotations:
         description: "Wildfly Pod with SSH access"
-        profile: "dev"
+        profile: "${PROFILE}"
         # Forzar reinicio cuando cambien ConfigMap o Secrets
         checksum/config: "${CONFIG_CHECKSUM}"
     spec:
@@ -88,7 +85,7 @@ spec:
       #       Ejemplo: 123456789.dkr.ecr.us-east-1.amazonaws.com/wildfly-ssh:26.1.2.Final
       containers:
         - name: wildfly
-          image: wildfly-ssh:26.1.2.Final
+          image: ${WILDFLY_IMAGE}
           imagePullPolicy: IfNotPresent
           # Si usas registry privado:
           # imagePullPolicy: Always
@@ -98,10 +95,10 @@ spec:
             - containerPort: 22
               name: ssh
               protocol: TCP
-            - containerPort: 8080
+            - containerPort: ${WILDFLY_HTTP_PORT}
               name: http
               protocol: TCP
-            - containerPort: 9990
+            - containerPort: ${WILDFLY_ADMIN_PORT}
               name: admin
               protocol: TCP
 
@@ -110,7 +107,7 @@ spec:
             # ── ConfigMap segun perfil ───────────────────────────────────
             # Cambiar a wildfly-config-staging o wildfly-config-prod segun entorno
             - configMapRef:
-                name: wildfly-config-dev
+                name: wildfly-config-${PROFILE}
             # ── Secrets (credenciales) ───────────────────────────────────
             - secretRef:
                 name: wildfly-secrets
@@ -152,7 +149,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: ${WILDFLY_HTTP_PORT}
               scheme: HTTP
             initialDelaySeconds: 30      # Esperar a que Wildfly arranque
             periodSeconds: 10            # Cada 10 segundos
@@ -165,7 +162,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: ${WILDFLY_HTTP_PORT}
               scheme: HTTP
             initialDelaySeconds: 60      # Dar tiempo a que arranque completamente
             periodSeconds: 15            # Cada 15 segundos

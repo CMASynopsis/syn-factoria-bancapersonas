@@ -20,7 +20,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: wildfly
+  name: ${K8S_NAMESPACE}
   labels:
     app: geniahr-wildfly
     module: app-javaee

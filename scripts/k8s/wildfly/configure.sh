@@ -83,7 +83,7 @@ STORAGE_SIZE="$(set_with_fallback "STORAGE_SIZE" "1Gi")"
 SERVICE_TYPE="$(set_with_fallback "SERVICE_TYPE" "ClusterIP")"
 
 # Ruta a los manifiestos K8s
-MANIFESTS_DIR="$(script_dir_c1d2e3f4a5b6c7d8e9f0)/../../../../infra/k8s/wildfly"
+MANIFESTS_DIR="$(script_dir_c1d2e3f4a5b6c7d8e9f0)/../../../infra/k8s/wildfly"
 
 # Orden de aplicación de los manifiestos
 MANIFEST_ORDER=(
@@ -190,6 +190,26 @@ check_namespace() {
   fi
 }
 
+# Exportar variables de configuración para envsubst
+export_env_vars() {
+  export PROFILE
+  export K8S_NAMESPACE
+  export WILDFLY_IMAGE
+  export WILDFLY_REPLICAS
+  export WILDFLY_HTTP_PORT
+  export WILDFLY_ADMIN_PORT
+  export WILDFLY_DEPLOY_USER
+  export WILDFLY_DEPLOY_PASSWORD
+  export WILDFLY_SSH_PUBLIC_KEY
+  export WILDFLY_XMS
+  export WILDFLY_XMX
+  export WILDFLY_JAVA_OPTS
+  export HEALTH_CHECK_TIMEOUT
+  export HEALTH_CHECK_INTERVAL
+  export STORAGE_SIZE
+  export SERVICE_TYPE
+}
+
 # Aplicar un manifiesto YAML si existe
 apply_manifest() {
   local name="$1"
@@ -201,7 +221,8 @@ apply_manifest() {
   fi
 
   log "INFO" "Aplicando ${name}: ${file}"
-  kubectl apply -f "${file}" --namespace "${K8S_NAMESPACE}"
+  export_env_vars
+  envsubst < "${file}" | kubectl apply -f - --namespace "${K8S_NAMESPACE}"
   log "SUCCESS" "Recurso '${name}' aplicado correctamente."
 }
 
@@ -363,7 +384,8 @@ destroy_resources() {
     local file="${MANIFESTS_DIR}/${manifest}.yaml"
     if [[ -f "${file}" ]]; then
       log "INFO" "Eliminando ${manifest}..."
-      kubectl delete -f "${file}" --namespace "${K8S_NAMESPACE}" --ignore-not-found=true &
+      export_env_vars
+      envsubst < "${file}" | kubectl delete -f - --namespace "${K8S_NAMESPACE}" --ignore-not-found=true &
     fi
   done
 
@@ -392,7 +414,8 @@ redeploy() {
     for manifest in service deployment pvc secrets configmap; do
       local file="${MANIFESTS_DIR}/${manifest}.yaml"
       if [[ -f "${file}" ]]; then
-        kubectl delete -f "${file}" --namespace "${K8S_NAMESPACE}" --ignore-not-found=true 2>/dev/null &
+        export_env_vars
+        envsubst < "${file}" | kubectl delete -f - --namespace "${K8S_NAMESPACE}" --ignore-not-found=true 2>/dev/null &
       fi
     done
     wait

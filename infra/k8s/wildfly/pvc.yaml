@@ -23,7 +23,6 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: wildfly-deployments-pvc
-  namespace: wildfly
   labels:
     app: geniahr-wildfly
     module: app-javaee
@@ -40,7 +39,7 @@ spec:
       # dev:    1Gi  (suficiente para desarrollo local)
       # staging: 5Gi  (multiples versiones de artefactos)
       # prod:    10Gi (historial de releases + artefactos actuales)
-      storage: 1Gi
+      storage: ${STORAGE_SIZE}
   # ── Storage Class ───────────────────────────────────────────────────────
   # Dev: usa el storage class por defecto del cluster
   # Para AWS EBS gp3: storageClassName: gp3

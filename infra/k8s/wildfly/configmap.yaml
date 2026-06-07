@@ -1,115 +1,40 @@
 # =============================================================================
-# ConfigMap: wildfly-config
+# ConfigMap: wildfly-config-${PROFILE}
 # =============================================================================
-# Proposito: Configuracion del servidor Wildfly con SSH.
-#            Soporta multiples perfiles (dev, staging, prod) mediante
-#            diferentes ConfigMaps. Cada perfil define valores distintos
-#            para JVM opts, health checks y opciones de Wildfly.
+# Template procesado con envsubst. Las variables ${VAR} se reemplazan
+# desde el perfil activo (dev.env / staging.env / prod.env).
 #
-# Variables de entorno expuestas al contenedor:
-#   WILDFLY_XMS, WILDFLY_XMX  - Memoria JVM (Xms, Xmx)
-#   WILDFLY_JAVA_OPTS         - Opciones JVM adicionales
-#   HEALTH_CHECK_URL          - URL para health checks
-#   WILDFLY_DEPLOY_PATH       - Ruta de deployments
-#
-# Perfiles:
-#   - wildfly-config-dev       (desarrollo local)
-#   - wildfly-config-staging   (pre-produccion)
-#   - wildfly-config-prod      (produccion)
-#
-# Uso con Kustomize:
-#   En el overlay, referencia el ConfigMap base y parchea los valores:
-#     patchesStrategicMerge:
-#       - configmap-patch.yaml
+# Variables usadas:
+#   PROFILE, WILDFLY_XMS, WILDFLY_XMX, WILDFLY_JAVA_OPTS, WILDFLY_HTTP_PORT
 # =============================================================================
 
-# ---------------------------------------------------------------------------
-# ConfigMap base (dev) — Valores por defecto para desarrollo local
-# ---------------------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: wildfly-config-dev
-  namespace: wildfly
+  name: wildfly-config-${PROFILE}
   labels:
     app: geniahr-wildfly
     module: app-javaee
     component: wildfly-config
-    environment: dev
+    environment: ${PROFILE}
   annotations:
-    description: "Configuracion Wildfly para desarrollo"
-    profile: dev
+    description: "Configuracion Wildfly para ${PROFILE}"
+    profile: ${PROFILE}
 data:
   # ── JVM Configuration ──────────────────────────────────────────────────
-  # Memoria heap inicial y maxima
-  WILDFLY_XMS: "512m"
-  WILDFLY_XMX: "1024m"
-
-  # Opciones JVM adicionales para Wildfly
-  # Se concatenan con -Xms y -Xmx para formar JAVA_OPTS
-  WILDFLY_JAVA_OPTS: "-Djboss.node.name=wildfly-dev -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+  WILDFLY_XMS: "${WILDFLY_XMS}"
+  WILDFLY_XMX: "${WILDFLY_XMX}"
+  WILDFLY_JAVA_OPTS: "${WILDFLY_JAVA_OPTS}"
 
   # ── Health Check ───────────────────────────────────────────────────────
-  # URL para las sondas de readiness y liveness
-  HEALTH_CHECK_URL: "http://localhost:8080/"
+  HEALTH_CHECK_URL: "http://localhost:${WILDFLY_HTTP_PORT}/"
 
   # ── Deployments ────────────────────────────────────────────────────────
-  # Ruta donde Wildfly monitoriza los .ear/.war para auto-despliegue
   WILDFLY_DEPLOY_PATH: "/opt/jboss/wildfly/standalone/deployments"
 
   # ── Wildfly paths ──────────────────────────────────────────────────────
   WILDFLY_HOME: "/opt/jboss/wildfly"
 
   # ── Wildfly standalone mode ────────────────────────────────────────────
-  WILDFLY_STANDALONE_MODE: "standalone"
----
-# ---------------------------------------------------------------------------
-# ConfigMap staging — Valores para pre-produccion
-# ---------------------------------------------------------------------------
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wildfly-config-staging
-  namespace: wildfly
-  labels:
-    app: geniahr-wildfly
-    module: app-javaee
-    component: wildfly-config
-    environment: staging
-  annotations:
-    description: "Configuracion Wildfly para staging (pre-produccion)"
-    profile: staging
-data:
-  WILDFLY_XMS: "1024m"
-  WILDFLY_XMX: "2048m"
-  WILDFLY_JAVA_OPTS: "-Djboss.node.name=wildfly-staging -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+PrintGCDetails -XX:+PrintGCTimeStamps"
-  HEALTH_CHECK_URL: "http://localhost:8080/"
-  WILDFLY_DEPLOY_PATH: "/opt/jboss/wildfly/standalone/deployments"
-  WILDFLY_HOME: "/opt/jboss/wildfly"
-  WILDFLY_STANDALONE_MODE: "standalone"
----
-# ---------------------------------------------------------------------------
-# ConfigMap prod — Valores para produccion (recursos optimizados)
-# ---------------------------------------------------------------------------
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wildfly-config-prod
-  namespace: wildfly
-  labels:
-    app: geniahr-wildfly
-    module: app-javaee
-    component: wildfly-config
-    environment: prod
-  annotations:
-    description: "Configuracion Wildfly para produccion"
-    profile: prod
-data:
-  WILDFLY_XMS: "2048m"
-  WILDFLY_XMX: "4096m"
-  WILDFLY_JAVA_OPTS: "-Djboss.node.name=wildfly-prod -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:+DisableExplicitGC"
-  HEALTH_CHECK_URL: "http://localhost:8080/"
-  WILDFLY_DEPLOY_PATH: "/opt/jboss/wildfly/standalone/deployments"
-  WILDFLY_HOME: "/opt/jboss/wildfly"
   WILDFLY_STANDALONE_MODE: "standalone"
 ---
