@@ -20,6 +20,7 @@ on:
     branches: [feature/pipelines]
     paths:
       - 'apps/backend-for-frontend/app-javaee/**'
+      - '.github/workflows/deploy-app-javaee.yml'
 
 concurrency:
   group: deploy-app-javaee-${{ github.ref }}
