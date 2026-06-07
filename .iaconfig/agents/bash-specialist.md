@@ -97,6 +97,32 @@ VAR=$(set_with_fallback "VAR_NAME" "valor_por_defecto")
 - Scripts deben ser idempotentes cuando sea posible
 - Ejecutar `validate.sh` antes de entregar
 
+### ⚠️  PROFILE — Early parse antes de inicializar variables
+
+Cuando el script use `load_env_vars` y `set_with_fallback` (que dependen de `PROFILE`), **nunca** asignar `PROFILE` como default y cargar variables antes de parsear argumentos. En su lugar, hacer un early parse de `--profile`/`-p` antes de cualquier inicialización:
+
+```bash
+PROFILE="dev"
+
+# Early parse: detectar --profile antes de inicializar variables
+for arg in "$@"; do
+  case "${arg}" in
+    -p|--profile) capture_profile=true ;;
+    *)  if [[ "${capture_profile:-}" == "true" ]]; then
+          PROFILE="${arg}"
+          break
+        fi
+        ;;
+  esac
+done
+
+load_env_vars "${PROFILE}" "$(script_dir_...)"
+
+VAR="$(set_with_fallback "VAR_NAME" "default")"
+```
+
+Esto evita inicializar variables con el perfil `dev` cuando el usuario pasó `--profile prod`.
+
 ### ⚠️  SCRIPT_DIR — Regla crítica
 
 **Nunca** asignar `SCRIPT_DIR` como variable global. En su lugar:

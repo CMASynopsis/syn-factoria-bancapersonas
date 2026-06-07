@@ -30,6 +30,21 @@ LOG_MODULE_NAME="$MODULE_NAME"
 # Perfil por defecto
 PROFILE="dev"
 
+# ── Early parse: detectar --profile antes de inicializar variables ──
+for arg in "$@"; do
+  case "${arg}" in
+    -p|--profile)
+      capture_profile=true
+      ;;
+    *)
+      if [[ "${capture_profile:-}" == "true" ]]; then
+        PROFILE="${arg}"
+        break
+      fi
+      ;;
+  esac
+done
+
 # Cargar vars del perfil
 load_env_vars "${PROFILE}" "$(script_dir_a1b2c3d4e5f6a7b8c9d0)"
 
@@ -38,6 +53,7 @@ load_env_vars "${PROFILE}" "$(script_dir_a1b2c3d4e5f6a7b8c9d0)"
 # ============================================================================
 
 K8S_NAMESPACE="$(set_with_fallback "K8S_NAMESPACE" "wildfly")"
+K8S_CONTEXT="$(set_with_fallback "K8S_CONTEXT" "")"
 WILDFLY_DEPLOY_USER="$(set_with_fallback "WILDFLY_DEPLOY_USER" "deploy")"
 WILDFLY_HTTP_PORT="$(set_with_fallback "WILDFLY_HTTP_PORT" "8080")"
 WILDFLY_ADMIN_PORT="$(set_with_fallback "WILDFLY_ADMIN_PORT" "9990")"
@@ -66,6 +82,11 @@ Opciones:
                             Por defecto: dev
   -h, --help              Mostrar esta ayuda
 
+Variables de entorno (prioridad: ENV_VAR > VAR > profile.env > default):
+  K8S_NAMESPACE            Namespace K8s                    Default: wildfly
+  K8S_CONTEXT              Contexto kubectl (si se define y no coincide, aborta)
+  LOCAL_SSH_PORT           Puerto SSH local para port-forward Default: 2222
+
 Ejemplos:
   ./scripts/k8s/wildfly/run.sh status
   ./scripts/k8s/wildfly/run.sh logs
@@ -76,12 +97,41 @@ Ejemplos:
 EOF
 }
 
-# Verificar kubectl
+# Verificar que kubectl esté instalado
 check_kubectl() {
   if ! command -v kubectl &>/dev/null; then
     log "ERROR" "kubectl no está instalado o no está en el PATH."
     exit 1
   fi
+  log "DEBUG" "kubectl binary found."
+}
+
+# Validar que el contexto de kubectl coincida con K8S_CONTEXT (si está definido)
+# Si K8S_CONTEXT está vacío, solo muestra DEBUG y continúa.
+# Si está definido y no coincide, ABORTA con error para evitar impacto en cluster incorrecto.
+require_k8s_context() {
+  local current_context
+  current_context=$(kubectl config current-context 2>/dev/null || true)
+
+  if [[ -z "${current_context}" ]]; then
+    log "ERROR" "No se pudo obtener el contexto actual de Kubernetes."
+    log "INFO" "Verifique su archivo kubeconfig (~/.kube/config)."
+    exit 1
+  fi
+
+  if [[ -z "${K8S_CONTEXT}" ]]; then
+    log "DEBUG" "Contexto kubectl actual: ${current_context} (K8S_CONTEXT no definido — se permite cualquier contexto)"
+    return 0
+  fi
+
+  if [[ "${current_context}" != "${K8S_CONTEXT}" ]]; then
+    log "ERROR" "Contexto actual '${current_context}' no coincide con el esperado '${K8S_CONTEXT}'."
+    log "INFO" "Use: kubectl config use-context ${K8S_CONTEXT}"
+    log "INFO" "O deshabilite esta validación: export K8S_CONTEXT=''"
+    exit 1
+  fi
+
+  log "DEBUG" "Contexto kubectl OK: ${current_context}"
 }
 
 # Obtener el nombre del primer pod del deployment
@@ -127,6 +177,7 @@ require_deployment() {
 # Mostrar estado completo
 show_status() {
   check_kubectl
+  require_k8s_context
 
   echo ""
   echo "═══════════════════════════════════════════════════════════"
@@ -196,6 +247,7 @@ show_status() {
 # Mostrar logs del pod
 show_logs() {
   check_kubectl
+  require_k8s_context
   local pod_name
   pod_name=$(require_pod)
 
@@ -207,6 +259,7 @@ show_logs() {
 # Conectarse via SSH al pod mediante port-forward
 ssh_into_pod() {
   check_kubectl
+  require_k8s_context
   local pod_name
   pod_name=$(require_pod)
 
@@ -250,6 +303,7 @@ ssh_into_pod() {
 # Hacer rollout restart del deployment
 restart_deployment() {
   check_kubectl
+  require_k8s_context
   local deploy_name
   deploy_name=$(require_deployment)
 
@@ -268,6 +322,7 @@ restart_deployment() {
 # Escalar el deployment
 scale_deployment() {
   check_kubectl
+  require_k8s_context
   local deploy_name
   deploy_name=$(require_deployment)
 
@@ -299,6 +354,7 @@ scale_deployment() {
 # Ejecutar un comando en el pod
 exec_in_pod() {
   check_kubectl
+  require_k8s_context
   local pod_name
   pod_name=$(require_pod)
 
@@ -329,6 +385,7 @@ while [[ $# -gt 0 ]]; do
       load_env_vars "${PROFILE}" "$(script_dir_a1b2c3d4e5f6a7b8c9d0)"
       # Re-evaluar variables
       K8S_NAMESPACE="$(set_with_fallback "K8S_NAMESPACE" "wildfly")"
+      K8S_CONTEXT="$(set_with_fallback "K8S_CONTEXT" "")"
       WILDFLY_DEPLOY_USER="$(set_with_fallback "WILDFLY_DEPLOY_USER" "deploy")"
       WILDFLY_HTTP_PORT="$(set_with_fallback "WILDFLY_HTTP_PORT" "8080")"
       WILDFLY_ADMIN_PORT="$(set_with_fallback "WILDFLY_ADMIN_PORT" "9990")"

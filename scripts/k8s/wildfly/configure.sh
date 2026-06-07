@@ -30,6 +30,21 @@ LOG_MODULE_NAME="$MODULE_NAME"
 # Perfil por defecto
 PROFILE="dev"
 
+# ── Early parse: detectar --profile antes de inicializar variables ──
+for arg in "$@"; do
+  case "${arg}" in
+    -p|--profile)
+      capture_profile=true
+      ;;
+    *)
+      if [[ "${capture_profile:-}" == "true" ]]; then
+        PROFILE="${arg}"
+        break
+      fi
+      ;;
+  esac
+done
+
 # Cargar vars del perfil
 load_env_vars "${PROFILE}" "$(script_dir_c1d2e3f4a5b6c7d8e9f0)"
 
@@ -102,7 +117,7 @@ Opciones:
 
 Variables de entorno (prioridad: ENV_VAR > VAR > profile.env > default):
   K8S_NAMESPACE            Namespace K8s                    Default: wildfly
-  K8S_CONTEXT              Contexto kubectl (opcional)
+  K8S_CONTEXT              Contexto kubectl (si se define y no coincide, aborta)
   WILDFLY_IMAGE            Imagen Docker                    Default: wildfly-ssh:26.1.2.Final
   WILDFLY_REPLICAS         Réplicas del deployment          Default: 1
   WILDFLY_HTTP_PORT        Puerto HTTP                      Default: 8080
@@ -127,13 +142,19 @@ Ejemplos:
 EOF
 }
 
-# Verificar que kubectl esté instalado y el contexto sea correcto
+# Verificar que kubectl esté instalado
 check_kubectl() {
   if ! command -v kubectl &>/dev/null; then
     log "ERROR" "kubectl no está instalado o no está en el PATH."
     exit 1
   fi
+  log "DEBUG" "kubectl binary found."
+}
 
+# Validar que el contexto de kubectl coincida con K8S_CONTEXT (si está definido)
+# Si K8S_CONTEXT está vacío, solo muestra DEBUG y continúa.
+# Si está definido y no coincide, ABORTA con error para evitar impacto en cluster incorrecto.
+require_k8s_context() {
   local current_context
   current_context=$(kubectl config current-context 2>/dev/null || true)
 
@@ -143,13 +164,19 @@ check_kubectl() {
     exit 1
   fi
 
-  if [[ -n "${K8S_CONTEXT}" && "${current_context}" != "${K8S_CONTEXT}" ]]; then
-    log "WARN" "Contexto actual '${current_context}' != esperado '${K8S_CONTEXT}'."
-    log "INFO" "Use: kubectl config use-context ${K8S_CONTEXT}"
-    log "INFO" "O continue con el contexto actual (export K8S_CONTEXT='')."
+  if [[ -z "${K8S_CONTEXT}" ]]; then
+    log "DEBUG" "Contexto kubectl actual: ${current_context} (K8S_CONTEXT no definido — se permite cualquier contexto)"
+    return 0
   fi
 
-  log "DEBUG" "kubectl OK — contexto: ${current_context}"
+  if [[ "${current_context}" != "${K8S_CONTEXT}" ]]; then
+    log "ERROR" "Contexto actual '${current_context}' no coincide con el esperado '${K8S_CONTEXT}'."
+    log "INFO" "Use: kubectl config use-context ${K8S_CONTEXT}"
+    log "INFO" "O deshabilite esta validación: export K8S_CONTEXT=''"
+    exit 1
+  fi
+
+  log "DEBUG" "Contexto kubectl OK: ${current_context}"
 }
 
 # Verificar que el namespace exista, crearlo si no
@@ -181,6 +208,7 @@ apply_manifest() {
 # Aplicar todos los manifiestos en orden
 apply_manifests() {
   check_kubectl
+  require_k8s_context
   check_namespace
 
   log "INFO" "═══════════════════════════════════════════════════════════"
@@ -199,6 +227,7 @@ apply_manifests() {
 # Validar que los recursos K8s estén creados y operativos
 validate_resources() {
   check_kubectl
+  require_k8s_context
 
   log "INFO" "═══════════════════════════════════════════════════════════"
   log "INFO" "  Validando recursos en namespace '${K8S_NAMESPACE}'"
@@ -305,6 +334,7 @@ validate_resources() {
 # Destruir todos los recursos del namespace
 destroy_resources() {
   check_kubectl
+  require_k8s_context
 
   if ! kubectl get namespace "${K8S_NAMESPACE}" &>/dev/null; then
     log "WARN" "El namespace '${K8S_NAMESPACE}' no existe. No hay nada que destruir."
@@ -349,6 +379,9 @@ destroy_resources() {
 
 # Redeploy: destroy + apply
 redeploy() {
+  check_kubectl
+  require_k8s_context
+
   log "INFO" "═══════════════════════════════════════════════════════════"
   log "INFO" "  Redeploy — destruyendo y reaplicando recursos"
   log "INFO" "═══════════════════════════════════════════════════════════"
