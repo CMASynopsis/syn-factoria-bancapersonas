@@ -13,7 +13,7 @@ Esta carpeta contiene la configuración de Docker para la infraestructura de men
 ### 1. Iniciar Kafka
 
 ```bash
-./manage-kafka.sh start
+../../scripts/docker/messaging/kafka.sh start
 ```
 
 Este comando:
@@ -25,7 +25,7 @@ Este comando:
 ### 2. Verificar estado
 
 ```bash
-./manage-kafka.sh status
+../../scripts/docker/messaging/kafka.sh status
 ```
 
 Output esperado:
@@ -37,13 +37,13 @@ geniahr-kafka       Up   9092/tcp, 29092/tcp
 ### 3. Ver logs en tiempo real
 
 ```bash
-./manage-kafka.sh logs
+../../scripts/docker/messaging/kafka.sh logs
 ```
 
 ### 4. Listar tópicos disponibles
 
 ```bash
-./manage-kafka.sh list-topics
+../../scripts/docker/messaging/kafka.sh list-topics
 ```
 
 Output esperado:
@@ -57,31 +57,31 @@ requirements.active
 
 ```bash
 # Iniciar servicios
-./manage-kafka.sh start
+../../scripts/docker/messaging/kafka.sh start
 
 # Detener servicios
-./manage-kafka.sh stop
+../../scripts/docker/messaging/kafka.sh stop
 
 # Reiniciar servicios
-./manage-kafka.sh restart
+../../scripts/docker/messaging/kafka.sh restart
 
 # Ver estado de containers
-./manage-kafka.sh status
+../../scripts/docker/messaging/kafka.sh status
 
 # Ver logs de Kafka broker
-./manage-kafka.sh logs
+../../scripts/docker/messaging/kafka.sh logs
 
 # Crear tópicos
-./manage-kafka.sh create-topics
+../../scripts/docker/messaging/kafka.sh create-topics
 
 # Listar tópicos
-./manage-kafka.sh list-topics
+../../scripts/docker/messaging/kafka.sh list-topics
 
 # Describir un tópico específico
-./manage-kafka.sh describe-topic requirements.active
+../../scripts/docker/messaging/kafka.sh describe-topic requirements.active
 
 # Ver consumer groups
-./manage-kafka.sh consumer-groups
+../../scripts/docker/messaging/kafka.sh consumer-groups
 ```
 
 ## Arquitectura
@@ -230,7 +230,7 @@ docker exec geniahr-kafka kafka-metrics-reporter.sh \
 docker ps | grep geniahr-kafka
 
 # Reiniciar
-./manage-kafka.sh restart
+../../scripts/docker/messaging/kafka.sh restart
 
 # Ver logs de error
 docker logs geniahr-kafka
@@ -240,17 +240,17 @@ docker logs geniahr-kafka
 
 ```bash
 # Recrear tópicos
-./manage-kafka.sh create-topics
+../../scripts/docker/messaging/kafka.sh create-topics
 
 # Verificar
-./manage-kafka.sh list-topics
+../../scripts/docker/messaging/kafka.sh list-topics
 ```
 
 ### Messages que no se procesan
 
 ```bash
 # Ver consumer groups y lag
-./manage-kafka.sh consumer-groups
+../../scripts/docker/messaging/kafka.sh consumer-groups
 
 # Reset consumer group (CUIDADO: reprocessa todos los mensajes)
 docker exec geniahr-kafka kafka-consumer-groups.sh \
@@ -265,13 +265,13 @@ docker exec geniahr-kafka kafka-consumer-groups.sh \
 
 ```bash
 # Parar
-./manage-kafka.sh stop
+../../scripts/docker/messaging/kafka.sh stop
 
 # Eliminar volúmenes (CUIDADO)
 docker volume rm messaging_zookeeper_data messaging_zookeeper_logs messaging_kafka_data
 
 # Iniciar de nuevo
-./manage-kafka.sh start
+../../scripts/docker/messaging/kafka.sh start
 ```
 
 ## Integración con Docker Compose de aplicaciones

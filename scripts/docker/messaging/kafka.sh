@@ -3,11 +3,39 @@ set -euo pipefail
 
 # Cargar funciones comunes
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../../../scripts/commons/log.sh"
-source "${SCRIPT_DIR}/../../../scripts/commons/get.sh"
+source "${SCRIPT_DIR}/../../commons/log.sh"
+source "${SCRIPT_DIR}/../../commons/get.sh"
 
 MODULE_NAME="kafka-infra"
 LOG_MODULE_NAME="$MODULE_NAME"
+
+# Cargar vars del perfil antes de inicializar el resto
+PROFILE="$(set_with_fallback "PROFILE" "dev")"
+load_env_vars "${PROFILE}" "${SCRIPT_DIR}"
+
+# ============================================================================
+# Variables con defaults alineados con docker-compose.yml
+# Prioridad: 1) ENV_VAR_NAME, 2) VAR_NAME, 3) inline default
+# ============================================================================
+KAFKA_IMAGE="$(set_with_fallback "KAFKA_IMAGE" "confluentinc/cp-kafka:7.8.1")"
+ZOOKEEPER_IMAGE="$(set_with_fallback "ZOOKEEPER_IMAGE" "confluentinc/cp-zookeeper:7.8.1")"
+KAFKA_PORT="$(set_with_fallback "KAFKA_PORT" "9092")"
+KAFKA_INTERNAL_PORT="$(set_with_fallback "KAFKA_INTERNAL_PORT" "29092")"
+ZOOKEEPER_PORT="$(set_with_fallback "ZOOKEEPER_PORT" "2181")"
+KAFKA_CONTAINER_NAME="$(set_with_fallback "KAFKA_CONTAINER_NAME" "geniahr-kafka")"
+ZOOKEEPER_CONTAINER_NAME="$(set_with_fallback "ZOOKEEPER_CONTAINER_NAME" "geniahr-zookeeper")"
+KAFKA_INIT_CONTAINER_NAME="$(set_with_fallback "KAFKA_INIT_CONTAINER_NAME" "geniahr-kafka-init")"
+NETWORK_NAME="$(set_with_fallback "NETWORK_NAME" "geniahr-network")"
+
+TOPIC_PARTITIONS="$(set_with_fallback "TOPIC_PARTITIONS" "1")"
+TOPIC_REPLICATION_FACTOR="$(set_with_fallback "TOPIC_REPLICATION_FACTOR" "1")"
+TOPIC_RETENTION_MS="$(set_with_fallback "TOPIC_RETENTION_MS" "604800000")"
+TOPIC_SEGMENT_MS="$(set_with_fallback "TOPIC_SEGMENT_MS" "86400000")"
+TOPIC_COMPRESSION="$(set_with_fallback "TOPIC_COMPRESSION" "snappy")"
+
+KAFKA_LOG_RETENTION_HOURS="$(set_with_fallback "KAFKA_LOG_RETENTION_HOURS" "168")"
+KAFKA_LOG_RETENTION_BYTES="$(set_with_fallback "KAFKA_LOG_RETENTION_BYTES" "1073741824")"
+KAFKA_LOG_SEGMENT_BYTES="$(set_with_fallback "KAFKA_LOG_SEGMENT_BYTES" "1073741824")"
 
 # ============================================================================
 # Funciones de utilidad
@@ -36,10 +64,21 @@ show_usage() {
   echo ""
   echo "Environment Variables:"
   echo "  KAFKA_MODE            - Kafka mode (kraft|zookeeper). Default: kraft"
-  echo "  KAFKA_CONTAINER       - Kafka container name. Default: geniahr-kafka"
-  echo "  KAFKA_BROKER          - Kafka broker address. Default: localhost:9092"
-  echo "  HEALTH_CHECK_TIMEOUT  - Health check timeout in seconds. Default: 120"
-  echo "  HEALTH_CHECK_INTERVAL - Health check interval in seconds. Default: 5"
+  echo "  KAFKA_CONTAINER_NAME  - Kafka container name. Default: geniahr-kafka"
+  echo "  KAFKA_PORT            - Kafka host port. Default: 9092"
+  echo "  KAFKA_INTERNAL_PORT   - Kafka internal port. Default: 29092"
+  echo "  ZOOKEEPER_PORT        - Zookeeper port. Default: 2181"
+  echo "  NETWORK_NAME          - Docker network name. Default: geniahr-network"
+  echo ""
+  echo "  TOPIC_PARTITIONS        - Topic partitions. Default: 1"
+  echo "  TOPIC_REPLICATION_FACTOR - Topic replication factor. Default: 1"
+  echo "  TOPIC_RETENTION_MS      - Topic retention in ms. Default: 604800000 (7d)"
+  echo "  TOPIC_SEGMENT_MS        - Topic segment in ms. Default: 86400000 (1d)"
+  echo "  TOPIC_COMPRESSION       - Topic compression type. Default: snappy"
+  echo ""
+  echo "  KAFKA_LOG_RETENTION_HOURS - Log retention hours. Default: 168"
+  echo "  HEALTH_CHECK_TIMEOUT      - Health check timeout in seconds. Default: 120"
+  echo "  HEALTH_CHECK_INTERVAL     - Health check interval in seconds. Default: 5"
 }
 
 # Detectar comando docker compose (v2) o docker-compose (v1)
@@ -246,10 +285,10 @@ remove_kafka() {
   # Use docker compose down with -v to remove volumes
   $compose_cmd -f "$DOCKER_COMPOSE_FILE" --profile kraft --profile zookeeper down -v --remove-orphans
 
-  # Additional cleanup: remove the geniahr-network if it exists and is not used
-  if docker network inspect geniahr-network &>/dev/null; then
-    log "INFO" "Removing geniahr-network..."
-    docker network rm geniahr-network 2>/dev/null || log "WARN" "Could not remove geniahr-network (may be in use)"
+  # Additional cleanup: remove the network if it exists and is not used
+  if docker network inspect "$NETWORK_NAME" &>/dev/null; then
+    log "INFO" "Removing $NETWORK_NAME..."
+    docker network rm "$NETWORK_NAME" 2>/dev/null || log "WARN" "Could not remove $NETWORK_NAME (may be in use)"
   fi
 
   log "SUCCESS" "Kafka infrastructure completely removed!"
@@ -301,10 +340,11 @@ create_topics() {
   if docker exec "$KAFKA_CONTAINER" kafka-topics --create \
     --topic requirements.active \
     --bootstrap-server "$KAFKA_INTERNAL_BROKER" \
-    --partitions 1 \
-    --replication-factor 1 \
-    --config retention.ms=604800000 \
-    --config segment.ms=86400000 \
+    --partitions "$TOPIC_PARTITIONS" \
+    --replication-factor "$TOPIC_REPLICATION_FACTOR" \
+    --config retention.ms="$TOPIC_RETENTION_MS" \
+    --config segment.ms="$TOPIC_SEGMENT_MS" \
+    --config compression.type="$TOPIC_COMPRESSION" \
     --if-not-exists &>/dev/null; then
     log "SUCCESS" "Topic 'requirements.active' created or already exists"
   else
@@ -368,32 +408,31 @@ consumer_groups() {
 # ============================================================================
 
 # Configuración por defecto
-PROFILE="${PROFILE:-dev}"
-DOCKER_COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+DOCKER_COMPOSE_FILE="$(cd "${SCRIPT_DIR}/../../../infra/docker/messaging" && pwd)/docker-compose.yml"
 
 # Kafka mode: 'kraft' (default, no Zookeeper) or 'zookeeper' (legacy)
-KAFKA_MODE="${KAFKA_MODE:-kraft}"
+KAFKA_MODE="$(set_with_fallback "KAFKA_MODE" "kraft")"
 
 # Container and service names based on mode
 if [[ "$KAFKA_MODE" == "zookeeper" ]]; then
-  KAFKA_CONTAINER="geniahr-kafka"
+  KAFKA_CONTAINER="$KAFKA_CONTAINER_NAME"
   KAFKA_SERVICE="kafka-zookeeper"
   KAFKA_INIT_SERVICE="kafka-init-zookeeper"
-  KAFKA_BROKER="localhost:9092"
-  KAFKA_INTERNAL_BROKER="kafka-zookeeper:29092"
+  KAFKA_BROKER="localhost:${KAFKA_PORT}"
+  KAFKA_INTERNAL_BROKER="kafka-zookeeper:${KAFKA_INTERNAL_PORT}"
   COMPOSE_PROFILES="zookeeper"
   ZOOKEEPER_SERVICE="zookeeper"
 else
-  KAFKA_CONTAINER="geniahr-kafka"
+  KAFKA_CONTAINER="$KAFKA_CONTAINER_NAME"
   KAFKA_SERVICE="kafka-kraft"
   KAFKA_INIT_SERVICE="kafka-init-kraft"
-  KAFKA_BROKER="localhost:9092"
-  KAFKA_INTERNAL_BROKER="kafka-kraft:29092"
+  KAFKA_BROKER="localhost:${KAFKA_PORT}"
+  KAFKA_INTERNAL_BROKER="kafka-kraft:${KAFKA_INTERNAL_PORT}"
   COMPOSE_PROFILES="kraft"
 fi
 
-HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-120}"
-HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-5}"
+HEALTH_CHECK_TIMEOUT="$(set_with_fallback "HEALTH_CHECK_TIMEOUT" "120")"
+HEALTH_CHECK_INTERVAL="$(set_with_fallback "HEALTH_CHECK_INTERVAL" "5")"
 
 # Parseo de argumentos
 while [[ $# -gt 0 ]]; do
@@ -401,6 +440,7 @@ while [[ $# -gt 0 ]]; do
     -p|--profile)
       PROFILE="$2"
       shift 2
+      load_env_vars "${PROFILE}" "${SCRIPT_DIR}"
       ;;
     -m|--mode)
       KAFKA_MODE="$2"

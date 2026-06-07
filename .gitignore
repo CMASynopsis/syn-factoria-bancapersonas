@@ -51,6 +51,7 @@ graphify-out/
 .codegraph/
 .mcp.json
 opencode.json*
+package.json
 
 # Runtime / Config files (but keep examples)
 .opencode/
