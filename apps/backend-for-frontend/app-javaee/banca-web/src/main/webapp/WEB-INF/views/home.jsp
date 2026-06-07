@@ -35,7 +35,7 @@
                                 <span class="account-type">${cuenta.tipoCuenta}</span>
                                 <span class="account-currency">${cuenta.moneda}</span>
                             </div>
-                            <div class="account-number">${cuenta.numeroCuentaFormateado()}</div>
+                            <div class="account-number">${cuenta.numeroCuentaFormateado}</div>
                             <div class="account-balance-label">Saldo disponible</div>
                             <div class="account-balance">
                                 <fmt:formatNumber value="${cuenta.saldoDisponible}" type="currency"
@@ -101,7 +101,7 @@
                                     <td>
                                         <fmt:formatDate value="${t.fechaOperacion}" pattern="dd/MM/yyyy HH:mm"/>
                                     </td>
-                                    <td>${t.tipoTransferenciaDescripcion()}</td>
+                                    <td>${t.tipoTransferenciaDescripcion}</td>
                                     <td>
                                         <c:choose>
                                             <c:when test="${not empty t.titularDestino}">${t.titularDestino}</c:when>

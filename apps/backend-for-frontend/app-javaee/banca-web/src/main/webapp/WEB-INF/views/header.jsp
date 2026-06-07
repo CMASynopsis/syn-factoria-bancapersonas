@@ -52,28 +52,30 @@
 
     </nav>
 
-    <div class="navbar-user">
-        <div class="user-info">
-            <span class="user-avatar">
-                ${fn:substring(usuario.nombres, 0, 1)}${fn:substring(usuario.apellidos, 0, 1)}
-            </span>
-            <span class="user-name">${usuario.nombres} ${usuario.apellidos}</span>
+    <div class="nav-dropdown user-dropdown">
+        <button class="user-avatar dropdown-toggle" title="Menú de usuario">
+            ${fn:substring(usuario.nombres, 0, 1)}${fn:substring(usuario.apellidos, 0, 1)}
+        </button>
+        <div class="dropdown-menu dropdown-menu-right">
+            <a href="${pageContext.request.contextPath}/logout" class="dropdown-item">Cerrar sesión</a>
         </div>
-        <a href="${pageContext.request.contextPath}/logout" class="btn btn-outline btn-sm">
-            Salir
-        </a>
     </div>
 </header>
 
 <script>
-// Handle all dropdown toggles
 document.querySelectorAll('.dropdown-toggle').forEach(function(toggle) {
     toggle.addEventListener('click', function() {
-        this.closest('.nav-dropdown').classList.toggle('open');
+        var dropdown = this.closest('.nav-dropdown');
+        var isOpen = dropdown.classList.contains('open');
+        document.querySelectorAll('.nav-dropdown').forEach(function(d) {
+            d.classList.remove('open');
+        });
+        if (!isOpen) {
+            dropdown.classList.add('open');
+        }
     });
 });
 
-// Close dropdowns when clicking outside
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.nav-dropdown')) {
         document.querySelectorAll('.nav-dropdown').forEach(function(d){

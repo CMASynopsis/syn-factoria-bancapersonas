@@ -118,15 +118,15 @@ CREATE TABLE transferencia (
 INSERT INTO usuario (username, password, nombres, apellidos, email, telefono, estado, rol)
 VALUES
 ('admin',
- '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWu',
+ '$2a$10$GVXA6X9WbRzQlMrEYjmYh.ADrCOkmNBt2k2kMzORltakmAkUU/beu',
  'Administrador', 'Sistema', 'admin@banconacional.com', '999000001', 'ACTIVO', 'ADMIN'),
 
 ('jgarcia',
- '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWu',
+ '$2a$10$GVXA6X9WbRzQlMrEYjmYh.ADrCOkmNBt2k2kMzORltakmAkUU/beu',
  'Juan Carlos', 'García López', 'jgarcia@email.com', '987654321', 'ACTIVO', 'CLIENTE'),
 
 ('mramirez',
- '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWu',
+ '$2a$10$GVXA6X9WbRzQlMrEYjmYh.ADrCOkmNBt2k2kMzORltakmAkUU/beu',
  'María Elena', 'Ramírez Torres', 'mramirez@email.com', '987123456', 'ACTIVO', 'CLIENTE');
 
 -- Cuentas de jgarcia (id=2)

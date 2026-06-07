@@ -1,0 +1,102 @@
+# =============================================================================
+# Banca Nacional - Docker Compose
+# =============================================================================
+# Variables de entorno (todas con valores por defecto):
+#
+# Perfil:
+#   APP_JAVAEE_PROFILE=dev
+#
+# Imágenes:
+#   WILDFLY_IMAGE=wildfly-app
+#   MYSQL_IMAGE=mysql:5.7
+#
+# Puertos:
+#   APP_PORT=8080
+#   MYSQL_PORT=3306
+#
+# Nombres de contenedores:
+#   WILDFLY_CONTAINER_NAME=banca-wildfly
+#   MYSQL_CONTAINER_NAME=banca-mysql
+#
+# Red:
+#   NETWORK_NAME=banca-network
+#
+# Base de datos:
+#   MYSQL_DATABASE=banca_db
+#   MYSQL_USER=banca_user
+#   MYSQL_PASSWORD=banca_pass123
+#   MYSQL_ROOT_PASSWORD=root123
+#
+# WildFly admin:
+#   WILDFLY_USER=admin
+#   WILDFLY_PASSWORD=Admin123*
+#
+# Volúmenes:
+#   MYSQL_VOLUME_NAME=banca-mysql-data
+#
+# =============================================================================
+
+services:
+  # ==========================================================================
+  # MySQL 5.7 Database
+  # ==========================================================================
+  mysql-db:
+    image: ${MYSQL_IMAGE:-mysql:5.7}
+    container_name: ${MYSQL_CONTAINER_NAME:-banca-mysql}
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-banca_db}
+      MYSQL_USER: ${MYSQL_USER:-banca_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-banca_pass123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - ${MYSQL_VOLUME_NAME:-banca-mysql-data}:/var/lib/mysql
+      - ${INIT_SQL_PATH:-../../../../apps/backend-for-frontend/app-javaee/scripts/banca_db_mysql57.sql}:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - ${NETWORK_NAME:-banca-network}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123}"]
+      interval: ${HEALTH_CHECK_INTERVAL:-10s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-5s}
+      retries: ${HEALTH_CHECK_RETRIES:-10}
+
+  # ==========================================================================
+  # WildFly Application Server
+  # ==========================================================================
+  wildfly-app:
+    build:
+      context: ${APP_SOURCE_CONTEXT:-../../../../apps/backend-for-frontend/app-javaee}
+      dockerfile: ${DOCKERFILE_PATH:-../../../infra/apps/backend-for-frontend/app-javaee/Dockerfile}
+      args:
+        WILDFLY_USER: ${WILDFLY_USER:-admin}
+        WILDFLY_PASSWORD: ${WILDFLY_PASSWORD:-Admin123*}
+    image: ${WILDFLY_IMAGE:-wildfly-app}:${WILDFLY_TAG:-latest}
+    container_name: ${WILDFLY_CONTAINER_NAME:-banca-wildfly}
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql-db
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-banca_db}
+      MYSQL_USER: ${MYSQL_USER:-banca_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-banca_pass123}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    networks:
+      - ${NETWORK_NAME:-banca-network}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/banca/login"]
+      interval: ${HEALTH_CHECK_INTERVAL:-15s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-5s}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-60s}
+      retries: ${HEALTH_CHECK_RETRIES:-5}
+
+volumes:
+  banca-mysql-data:
+    driver: local
+
+networks:
+  banca-network:
+    driver: bridge

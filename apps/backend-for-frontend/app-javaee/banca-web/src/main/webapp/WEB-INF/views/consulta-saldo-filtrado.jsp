@@ -73,7 +73,7 @@
                                 <span class="account-type">${cuenta.tipoCuenta}</span>
                                 <span class="account-currency">${cuenta.moneda}</span>
                             </div>
-                            <div class="account-number">${cuenta.numeroCuentaFormateado()}</div>
+                            <div class="account-number">${cuenta.numeroCuentaFormateado}</div>
                             <div class="account-balance-label">Saldo disponible</div>
                             <div class="account-balance">
                                 <fmt:formatNumber value="${cuenta.saldoDisponible}"
@@ -108,7 +108,7 @@
                         <tbody>
                             <c:forEach var="cuenta" items="${cuentas}">
                                 <tr>
-                                    <td><strong>${cuenta.numeroCuentaFormateado()}</strong></td>
+                                    <td><strong>${cuenta.numeroCuentaFormateado}</strong></td>
                                     <td style="font-size:0.82rem;">${cuenta.cci}</td>
                                     <td>
                                         <span class="badge ${cuenta.tipoCuenta == 'AHORROS' ? 'badge-info' : 'badge-primary'}">

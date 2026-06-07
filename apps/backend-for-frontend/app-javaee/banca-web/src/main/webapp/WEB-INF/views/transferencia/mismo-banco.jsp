@@ -37,7 +37,7 @@
                     <option value="">-- Seleccione cuenta de origen --</option>
                     <c:forEach var="c" items="${cuentas}">
                         <option value="${c.id}" data-saldo="${c.saldoDisponible}" data-moneda="${c.moneda}">
-                            ${c.tipoCuenta} ${c.numeroCuentaFormateado()} |
+                            ${c.tipoCuenta} ${c.numeroCuentaFormateado} |
                             Saldo: ${c.moneda} <fmt:formatNumber value="${c.saldoDisponible}" minFractionDigits="2"/>
                         </option>
                     </c:forEach>
