@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ vars.DEPLOY_ENVIRONMENT || 'dev' }}
     env:
-      MAVEN_OPTS: -Dmaven.repo.local=${{ runner.temp }}/.m2/repository
+      MAVEN_OPTS: -Dmaven.repo.local=/tmp/.m2/repository
 
     steps:
       - name: Checkout
