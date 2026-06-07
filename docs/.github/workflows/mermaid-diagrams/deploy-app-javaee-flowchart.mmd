@@ -1,0 +1,10 @@
+flowchart LR
+    A[Push a main/master\ncon cambios en app-javaee] --> B[Checkout]
+    B --> C[Setup JDK 8 + Maven cache]
+    C --> D[mvn clean package -DskipTests]
+    D --> E[SCP: banca-nacional.ear → /tmp/]
+    E --> F[SSH: mv a deployments/\nremove markers]
+    F --> G{Verificar .ear.deployed}
+    G -- Sí --> H[SUCCESS]
+    G -- .ear.failed --> I[FAILED]
+    G -- Timeout 60s --> J[TIMEOUT]

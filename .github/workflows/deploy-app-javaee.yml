@@ -1,0 +1,83 @@
+name: Deploy Banca Nacional
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/backend-for-frontend/app-javaee/**'
+
+concurrency:
+  group: deploy-app-javaee-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ vars.DEPLOY_ENVIRONMENT || 'dev' }}
+    env:
+      MAVEN_OPTS: -Dmaven.repo.local=${{ runner.temp }}/.m2/repository
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: maven
+          cache-dependency-path: 'apps/backend-for-frontend/app-javaee/pom.xml'
+
+      - name: Build EAR
+        working-directory: apps/backend-for-frontend/app-javaee
+        run: mvn clean package -DskipTests
+
+      - name: Copy EAR to remote server
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ vars.DEPLOY_PORT || '22' }}
+          source: apps/backend-for-frontend/app-javaee/banca-ear/target/banca-nacional.ear
+          target: /tmp/
+          strip_components: 6
+
+      - name: Deploy EAR and trigger reload
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ vars.DEPLOY_PORT || '22' }}
+          script: |
+            DEPLOY_PATH="${{ vars.WILDFLY_DEPLOY_PATH || '/opt/wildfly/standalone/deployments' }}"
+            echo "Deploying to ${DEPLOY_PATH}..."
+            rm -f "${DEPLOY_PATH}/banca-nacional.ear.deployed"
+            rm -f "${DEPLOY_PATH}/banca-nacional.ear.failed"
+            mv /tmp/banca-nacional.ear "${DEPLOY_PATH}/"
+            echo "Deploy triggered: ${DEPLOY_PATH}/banca-nacional.ear"
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ vars.DEPLOY_PORT || '22' }}
+          script: |
+            DEPLOY_PATH="${{ vars.WILDFLY_DEPLOY_PATH || '/opt/wildfly/standalone/deployments' }}"
+            for i in $(seq 1 12); do
+              if [ -f "${DEPLOY_PATH}/banca-nacional.ear.deployed" ]; then
+                echo "SUCCESS: Application deployed successfully"
+                exit 0
+              fi
+              if [ -f "${DEPLOY_PATH}/banca-nacional.ear.failed" ]; then
+                echo "FAILED: Deployment failed - check server.log"
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "TIMEOUT: Deployment did not complete within 60 seconds"
+            exit 1
