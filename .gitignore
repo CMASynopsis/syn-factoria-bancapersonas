@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+
+# Build / Output
+dist/
+build/
+target/
+*.tgz
+coverage/
+.nyc_output/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
+.fuse_hidden*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java heap dumps
+java_*.hprof
+
+# IDE / Editor
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+.classpath
+.factorypath
+.project
+.settings/
+
+# Temporary files
+.cache/
+tmp/
+temp/
+.tmp/
+.temp/
+graphify-out/
+.graphify/
+.codegraph/
+.mcp.json
+opencode.json*
+
+# Runtime / Config files (but keep examples)
+.opencode/
+.claude/
+.agents/
+AGENTS.md
+CLAUDE.md
+package-lock.json
+
+# Docs generated
+docs/templates/
+
+# Working directories
+**/input/**
+**/output/**
+**/backup/**
+**/bin/
+
+# Exceptions — keep example configs tracked
+!opencode.json.example
+!.claude/settings.local.json

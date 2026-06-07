@@ -1,0 +1,200 @@
+# Kafka Infrastructure with KRaft mode (Zookeeper-less) - RECOMMENDED
+# To use Zookeeper mode, set KAFKA_MODE=zookeeper in your .env file
+
+services:
+  # ==========================================================================
+  # Zookeeper - Only used when KAFKA_MODE=zookeeper
+  # ==========================================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.8.1
+    container_name: geniahr-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVER_ID: 1
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - geniahr-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - zookeeper
+
+  # ==========================================================================
+  # Kafka Broker - KRaft mode (default, no Zookeeper)
+  # ==========================================================================
+  kafka-kraft:
+    image: confluentinc/cp-kafka:7.8.1
+    container_name: geniahr-kafka
+    environment:
+      # KRaft mode settings
+      KAFKA_NODE_ID: 1
+      KAFKA_CLUSTER_ID: fe2766ec-4d0f-4b87-8947-7c84808e94f8
+      CLUSTER_ID: fe2766ec-4d0f-4b87-8947-7c84808e94f8
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-kraft:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Listeners for KRaft mode
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-kraft:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Common settings
+      KAFKA_BROKER_ID: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - geniahr-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - kraft
+
+  # ==========================================================================
+  # Kafka Broker - Zookeeper mode (legacy)
+  # ==========================================================================
+  kafka-zookeeper:
+    image: confluentinc/cp-kafka:7.8.1
+    container_name: geniahr-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      # Zookeeper mode settings
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # Listeners for Zookeeper mode
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-zookeeper:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Common settings (same as KRaft)
+      KAFKA_BROKER_ID: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - geniahr-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - zookeeper
+
+  # ==========================================================================
+  # Kafka Init Container - Creates required topics (KRaft mode)
+  # ==========================================================================
+  kafka-init-kraft:
+    image: confluentinc/cp-kafka:7.8.1
+    container_name: geniahr-kafka-init
+    depends_on:
+      kafka-kraft:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+    command:
+      - bash
+      - -c
+      - |
+        echo 'Waiting for Kafka to be ready...'
+        kafka-broker-api-versions --bootstrap-server kafka-kraft:29092 || exit 1
+        echo '---'
+        echo 'Creating topic: requirements.active'
+        kafka-topics --create \
+          --topic requirements.active \
+          --bootstrap-server kafka-kraft:29092 \
+          --partitions 1 \
+          --replication-factor 1 \
+          --config retention.ms=604800000 \
+          --config segment.ms=86400000 \
+          --if-not-exists
+        echo '---'
+        echo 'Verifying topics...'
+        kafka-topics --list --bootstrap-server kafka-kraft:29092
+        echo '---'
+        echo 'Topics created successfully!'
+    networks:
+      - geniahr-network
+    profiles:
+      - kraft
+
+  # ==========================================================================
+  # Kafka Init Container - Creates required topics (Zookeeper mode)
+  # ==========================================================================
+  kafka-init-zookeeper:
+    image: confluentinc/cp-kafka:7.8.1
+    container_name: geniahr-kafka-init
+    depends_on:
+      kafka-zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+    command:
+      - bash
+      - -c
+      - |
+        echo 'Waiting for Kafka to be ready...'
+        kafka-broker-api-versions --bootstrap-server kafka-zookeeper:29092 || exit 1
+        echo '---'
+        echo 'Creating topic: requirements.active'
+        kafka-topics --create \
+          --topic requirements.active \
+          --bootstrap-server kafka-zookeeper:29092 \
+          --partitions 1 \
+          --replication-factor 1 \
+          --config retention.ms=604800000 \
+          --config segment.ms=86400000 \
+          --if-not-exists
+        echo '---'
+        echo 'Verifying topics...'
+        kafka-topics --list --bootstrap-server kafka-zookeeper:29092
+        echo '---'
+        echo 'Topics created successfully!'
+    networks:
+      - geniahr-network
+    profiles:
+      - zookeeper
+
+volumes:
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_data:
+    driver: local
+
+networks:
+  geniahr-network:
+    driver: bridge
