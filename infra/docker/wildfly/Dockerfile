@@ -99,9 +99,9 @@ ENV JBOSS_HOME=${WILDFLY_HOME}
 RUN ${WILDFLY_HOME}/bin/add-user.sh admin admin --silent && \
     ${WILDFLY_HOME}/bin/add-user.sh -a ${DEPLOY_USER} ${DEPLOY_PASSWORD} --silent
 
-# Asegurar permisos para el usuario deploy
-RUN chown -R jboss:jboss ${WILDFLY_HOME} && \
-    usermod -aG jboss ${DEPLOY_USER} && \
+# Asegurar permisos para el usuario deploy (solo deployments, no toda la instalacion)
+RUN usermod -aG jboss ${DEPLOY_USER} && \
+    chown -R jboss:jboss ${DEPLOYMENTS_DIR} && \
     chmod -R g+w ${DEPLOYMENTS_DIR}
 
 # =============================================================================

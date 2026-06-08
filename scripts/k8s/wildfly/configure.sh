@@ -19,6 +19,7 @@ script_dir_c1d2e3f4a5b6c7d8e9f0() { echo "$(cd -- "$(dirname -- "${BASH_SOURCE[0
 # ── Cargar utilidades compartidas ──
 source "$(script_dir_c1d2e3f4a5b6c7d8e9f0)/../../commons/log.sh"
 source "$(script_dir_c1d2e3f4a5b6c7d8e9f0)/../../commons/get.sh"
+source "$(script_dir_c1d2e3f4a5b6c7d8e9f0)/modules/kubectl.sh"
 
 MODULE_NAME="k8s-wildfly-configure"
 LOG_MODULE_NAME="$MODULE_NAME"
@@ -81,6 +82,12 @@ HEALTH_CHECK_INTERVAL="$(set_with_fallback "HEALTH_CHECK_INTERVAL" "5")"
 # Storage y Service
 STORAGE_SIZE="$(set_with_fallback "STORAGE_SIZE" "1Gi")"
 SERVICE_TYPE="$(set_with_fallback "SERVICE_TYPE" "ClusterIP")"
+VOLUME_BASE_DIR="$(set_with_fallback "VOLUME_BASE_DIR" "/mnt/data/wildfly")"
+
+# Registry (para imagen privada)
+WILDFLY_REGISTRY="$(set_with_fallback "WILDFLY_REGISTRY" "")"
+WILDFLY_REGISTRY_USER="$(set_with_fallback "WILDFLY_REGISTRY_USER" "")"
+WILDFLY_REGISTRY_PASSWORD="$(set_with_fallback "WILDFLY_REGISTRY_PASSWORD" "")"
 
 # Ruta a los manifiestos K8s
 MANIFESTS_DIR="$(script_dir_c1d2e3f4a5b6c7d8e9f0)/../../../infra/k8s/wildfly"
@@ -90,6 +97,7 @@ MANIFEST_ORDER=(
   "namespace"
   "configmap"
   "secrets"
+  "pv"
   "pvc"
   "deployment"
   "service"
@@ -109,6 +117,8 @@ Comandos:
   validate    Validar que los recursos estén creados y operativos
   destroy     Eliminar todos los recursos del namespace
   redeploy    Destruir y volver a aplicar (destroy + apply)
+  events      Mostrar eventos del namespace filtrados por wildfly
+  registry    Crear o actualizar el secret de credenciales del registry
 
 Opciones:
   -p, --profile <perfil>  Perfil de configuracion (dev, staging, prod)
@@ -119,6 +129,9 @@ Variables de entorno (prioridad: ENV_VAR > VAR > profile.env > default):
   K8S_NAMESPACE            Namespace K8s                    Default: wildfly
   K8S_CONTEXT              Contexto kubectl (si se define y no coincide, aborta)
   WILDFLY_IMAGE            Imagen Docker                    Default: wildfly-ssh:26.1.2.Final
+  WILDFLY_REGISTRY         Registry de la imagen            Default: (vacio = Docker Hub)
+  WILDFLY_REGISTRY_USER    Usuario del registry             Default: (vacio)
+  WILDFLY_REGISTRY_PASSWORD Password del registry            Default: (vacio)
   WILDFLY_REPLICAS         Réplicas del deployment          Default: 1
   WILDFLY_HTTP_PORT        Puerto HTTP                      Default: 8080
   WILDFLY_ADMIN_PORT       Puerto Admin                     Default: 9990
@@ -136,48 +149,14 @@ Ejemplos:
   ./scripts/k8s/wildfly/configure.sh apply
   ./scripts/k8s/wildfly/configure.sh apply -p prod
   ./scripts/k8s/wildfly/configure.sh validate
+  ./scripts/k8s/wildfly/configure.sh events
   ./scripts/k8s/wildfly/configure.sh destroy
   ./scripts/k8s/wildfly/configure.sh redeploy
   K8S_NAMESPACE=my-wildfly ./scripts/k8s/wildfly/configure.sh apply
 EOF
 }
 
-# Verificar que kubectl esté instalado
-check_kubectl() {
-  if ! command -v kubectl &>/dev/null; then
-    log "ERROR" "kubectl no está instalado o no está en el PATH."
-    exit 1
-  fi
-  log "DEBUG" "kubectl binary found."
-}
-
-# Validar que el contexto de kubectl coincida con K8S_CONTEXT (si está definido)
-# Si K8S_CONTEXT está vacío, solo muestra DEBUG y continúa.
-# Si está definido y no coincide, ABORTA con error para evitar impacto en cluster incorrecto.
-require_k8s_context() {
-  local current_context
-  current_context=$(kubectl config current-context 2>/dev/null || true)
-
-  if [[ -z "${current_context}" ]]; then
-    log "ERROR" "No se pudo obtener el contexto actual de Kubernetes."
-    log "INFO" "Verifique su archivo kubeconfig (~/.kube/config)."
-    exit 1
-  fi
-
-  if [[ -z "${K8S_CONTEXT}" ]]; then
-    log "DEBUG" "Contexto kubectl actual: ${current_context} (K8S_CONTEXT no definido — se permite cualquier contexto)"
-    return 0
-  fi
-
-  if [[ "${current_context}" != "${K8S_CONTEXT}" ]]; then
-    log "ERROR" "Contexto actual '${current_context}' no coincide con el esperado '${K8S_CONTEXT}'."
-    log "INFO" "Use: kubectl config use-context ${K8S_CONTEXT}"
-    log "INFO" "O deshabilite esta validación: export K8S_CONTEXT=''"
-    exit 1
-  fi
-
-  log "DEBUG" "Contexto kubectl OK: ${current_context}"
-}
+# check_kubectl y require_k8s_context se cargan desde modules/kubectl.sh
 
 # Verificar que el namespace exista, crearlo si no
 check_namespace() {
@@ -208,6 +187,10 @@ export_env_vars() {
   export HEALTH_CHECK_INTERVAL
   export STORAGE_SIZE
   export SERVICE_TYPE
+  export VOLUME_BASE_DIR
+  export WILDFLY_REGISTRY
+  export WILDFLY_REGISTRY_USER
+  export WILDFLY_REGISTRY_PASSWORD
 }
 
 # Aplicar un manifiesto YAML si existe
@@ -379,8 +362,8 @@ destroy_resources() {
 
   log "INFO" "Eliminando recursos en orden inverso..."
 
-  # Eliminar en orden inverso (service → deployment → pvc → secrets → configmap)
-  for manifest in service deployment pvc secrets configmap; do
+  # Eliminar en orden inverso (service → deployment → pvc → pv → secrets → configmap)
+  for manifest in service deployment pvc pv secrets configmap; do
     local file="${MANIFESTS_DIR}/${manifest}.yaml"
     if [[ -f "${file}" ]]; then
       log "INFO" "Eliminando ${manifest}..."
@@ -411,7 +394,7 @@ redeploy() {
   # En redeploy no pedimos confirmación — el usuario ya sabe lo que hace
   if kubectl get namespace "${K8S_NAMESPACE}" &>/dev/null; then
     log "INFO" "Eliminando recursos existentes..."
-    for manifest in service deployment pvc secrets configmap; do
+    for manifest in service deployment pvc pv secrets configmap; do
       local file="${MANIFESTS_DIR}/${manifest}.yaml"
       if [[ -f "${file}" ]]; then
         export_env_vars
@@ -423,6 +406,78 @@ redeploy() {
   fi
 
   apply_manifests
+}
+
+# Mostrar eventos del namespace filtrados por recursos wildfly
+show_events() {
+  check_kubectl
+  require_k8s_context
+
+  log "INFO" "═══════════════════════════════════════════════════════════"
+  log "INFO" "  Eventos en namespace '${K8S_NAMESPACE}'"
+  log "INFO" "═══════════════════════════════════════════════════════════"
+
+  if ! kubectl get namespace "${K8S_NAMESPACE}" &>/dev/null; then
+    log "WARN" "El namespace '${K8S_NAMESPACE}' no existe. Sin eventos que mostrar."
+    return 0
+  fi
+
+  local events
+  events=$(kubectl get events -n "${K8S_NAMESPACE}" \
+    --sort-by='.lastTimestamp' \
+    -o custom-columns=LAST_SEEN:.lastTimestamp,TYPE:.type,REASON:.reason,OBJECT:.involvedObject.name,MESSAGE:.message \
+    2>/dev/null || true)
+
+  if [[ -z "${events}" ]]; then
+    log "INFO" "No hay eventos en el namespace '${K8S_NAMESPACE}'."
+    return 0
+  fi
+
+  echo ""
+  echo "${events}"
+  echo ""
+
+  log "INFO" "Para ver eventos en tiempo real: kubectl get events -n ${K8S_NAMESPACE} --watch"
+}
+
+# Crear o actualizar el secret del registry para imagePullSecrets
+registry_secret() {
+  check_kubectl
+  require_k8s_context
+
+  if [[ -z "${WILDFLY_REGISTRY}" ]]; then
+    log "WARN" "WILDFLY_REGISTRY no está definido. No se puede crear el secret."
+    log "INFO" "Defina WILDFLY_REGISTRY en el perfil o como variable de entorno."
+    return 0
+  fi
+
+  if [[ -z "${WILDFLY_REGISTRY_USER}" ]] || [[ -z "${WILDFLY_REGISTRY_PASSWORD}" ]]; then
+    log "WARN" "WILDFLY_REGISTRY_USER o WILDFLY_REGISTRY_PASSWORD no están definidos."
+    log "INFO" "El secret se creará igual, pero la autenticación fallará si el registry requiere credenciales."
+    log "INFO" "Defina ambas variables en el perfil o como variables de entorno."
+  fi
+
+  # Sanitizar registry para el secret (docker login requiere el server sin protocolo en algunos casos)
+  local registry_server="${WILDFLY_REGISTRY}"
+  registry_server="${registry_server#https://}"
+  registry_server="${registry_server#http://}"
+  registry_server="${registry_server%/}"
+
+  log "INFO" "═══════════════════════════════════════════════════════════"
+  log "INFO" "  Creando secret del registry"
+  log "INFO" "  Server:   ${registry_server}"
+  log "INFO" "  Usuario:  ${WILDFLY_REGISTRY_USER:-<vacío>}"
+  log "INFO" "  Secret:   wildfly-registry-credentials"
+  log "INFO" "═══════════════════════════════════════════════════════════"
+
+  kubectl create secret docker-registry wildfly-registry-credentials \
+    --namespace "${K8S_NAMESPACE}" \
+    --docker-server="${registry_server}" \
+    --docker-username="${WILDFLY_REGISTRY_USER}" \
+    --docker-password="${WILDFLY_REGISTRY_PASSWORD}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  log "SUCCESS" "Secret 'wildfly-registry-credentials' creado/actualizado correctamente."
 }
 
 # ============================================================================
@@ -451,8 +506,12 @@ while [[ $# -gt 0 ]]; do
       WILDFLY_XMX="$(set_with_fallback "WILDFLY_XMX" "1024m")"
       STORAGE_SIZE="$(set_with_fallback "STORAGE_SIZE" "1Gi")"
       SERVICE_TYPE="$(set_with_fallback "SERVICE_TYPE" "ClusterIP")"
+      VOLUME_BASE_DIR="$(set_with_fallback "VOLUME_BASE_DIR" "/mnt/data/wildfly")"
+      WILDFLY_REGISTRY="$(set_with_fallback "WILDFLY_REGISTRY" "")"
+      WILDFLY_REGISTRY_USER="$(set_with_fallback "WILDFLY_REGISTRY_USER" "")"
+      WILDFLY_REGISTRY_PASSWORD="$(set_with_fallback "WILDFLY_REGISTRY_PASSWORD" "")"
       ;;
-    apply|validate|destroy|redeploy)
+    apply|validate|destroy|redeploy|events|registry)
       COMMAND="$1"
       shift
       ;;
@@ -489,6 +548,12 @@ case "${COMMAND}" in
     ;;
   redeploy)
     redeploy
+    ;;
+  events)
+    show_events
+    ;;
+  registry)
+    registry_secret
     ;;
   *)
     log "ERROR" "Comando desconocido: ${COMMAND}"

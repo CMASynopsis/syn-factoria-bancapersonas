@@ -79,6 +79,10 @@ spec:
         # Forzar reinicio cuando cambien ConfigMap o Secrets
         checksum/config: "${CONFIG_CHECKSUM}"
     spec:
+      # ── Credenciales del registry para bajar la imagen ──────────────────
+      imagePullSecrets:
+        - name: wildfly-registry-credentials
+
       # ── Imagen ─────────────────────────────────────────────────────────
       # NOTA: En produccion, usa un tag fijo (no 'latest') y referencialo
       #       desde un registry privado (ECR, GCR, ACR, Harbor).

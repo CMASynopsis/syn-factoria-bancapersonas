@@ -1,0 +1,31 @@
+# =============================================================================
+# PersistentVolume: wildfly-deployments-pv
+# =============================================================================
+# Proposito: Respaldo fisico para el PVC de deployments de Wildfly.
+#            Apunta al directorio en el nodo preparado por volumes.sh.
+#
+# Dependencias:
+#   - El directorio ${VOLUME_BASE_DIR} debe existir en el nodo
+#     (ejecutar volumes.sh create antes de apply)
+#
+# Storage Class: local-storage (misma que el resto del cluster)
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wildfly-deployments-pv
+  labels:
+    app: geniahr-wildfly
+    module: app-javaee
+    component: wildfly-pv
+spec:
+  capacity:
+    storage: ${STORAGE_SIZE}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  hostPath:
+    path: ${VOLUME_BASE_DIR}
+    type: DirectoryOrCreate

@@ -45,5 +45,5 @@ spec:
   # Para AWS EBS gp3: storageClassName: gp3
   # Para GCP PD-SSD:  storageClassName: pd-ssd
   # Para local (kind/minikube): storageClassName: standard
-  # storageClassName: ""
+  storageClassName: local-storage
 ---
